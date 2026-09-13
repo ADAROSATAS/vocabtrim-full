@@ -1,0 +1,29 @@
+{
+  "name": "vocabtrim-full-frontend",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc -b && vite build",
+    "typecheck": "vue-tsc -b",
+    "test": "vitest",
+    "test:run": "vitest run"
+  },
+  "dependencies": {
+    "pinia": "3.0.3",
+    "vue": "3.5.41",
+    "vue-router": "4.6.1"
+  },
+  "devDependencies": {
+    "@types/node": "24.3.0",
+    "@vitejs/plugin-vue": "6.0.8",
+    "typescript": "5.9.3",
+    "vite": "8.0.0",
+    "vitest": "4.1.10",
+    "vue-tsc": "3.0.6"
+  }
+}
