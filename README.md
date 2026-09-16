@@ -17,11 +17,11 @@ VocabTrim Full 是一个用于快速筛选词表的 Web 应用。用户可以导
 
 ## 技术栈
 
-后端使用 Java 21、Spring Boot 4.1、Spring MVC、Spring Security、MyBatis、MySQL 8.4 和 Flyway。前端使用 Vue 3、TypeScript、Vue Router、Pinia 和 Vite，本地数据保存在 IndexedDB 和 localStorage 中。生产部署由 Nginx 提供静态文件并反向代理 `/api`，仓库同时提供 Docker Compose、JUnit 5、Vitest 和 GitHub Actions 配置。
+后端使用 Java 21、Spring Boot 4.1、Spring MVC、Spring Security、Spring Session、Redis、MyBatis、MySQL 8.4 和 Flyway。Redis 使用官方镜像 `redis:8.2.9-alpine`，属于 Redis Open Source 8.2 Extended release，仅保存 HTTP Session。前端使用 Vue 3、TypeScript、Vue Router、Pinia 和 Vite，本地数据保存在 IndexedDB 和 localStorage 中。生产部署由 Nginx 提供静态文件并反向代理 `/api`，仓库同时提供 Docker Compose、JUnit、Vitest 和 GitHub Actions 配置。
 
 ## 快速启动
 
-准备 Docker 和 Docker Compose 后，复制环境变量示例、修改数据库密码，然后启动全部服务：
+准备 Docker 和 Docker Compose 后，复制环境变量示例，将数据库和 Redis 的示例密码换成自己的密码，然后启动全部服务（不要提交 `.env`）：
 
 ```bash
 cp .env.example .env
@@ -32,17 +32,18 @@ docker compose up --build
 
 本地 HTTP 环境应保持 `SESSION_COOKIE_SECURE=false`。如果应用部署在 HTTPS 环境中，应将其改为 `true`。
 
+Redis 不发布宿主机端口，后端会等待 MySQL 和 Redis 健康后启动。Session 是临时状态：Redis 明确关闭 RDB/AOF，Compose 不配置 Redis 数据卷；Redis 重启或重建后需重新登录，MySQL 和 IndexedDB 中的业务数据不受影响。
+
 ## 本地开发
 
-后端需要 Java 21、Maven 3.6.3+ 和 MySQL 8.4。默认数据库名、用户名和密码都是 `vocabtrim`，也可以通过 `DB_URL`、`DB_USERNAME`、`DB_PASSWORD` 和 `SESSION_COOKIE_SECURE` 覆盖配置。数据库表由 Flyway 在应用启动时自动创建和迁移。
+为保持 Redis 仅在 Docker 内网可访问，本地开发也在容器中运行后端；先按上文准备 `.env`，再从仓库根目录运行：
 
 ```bash
-cd backend
-mvn clean test
-mvn spring-boot:run
+docker compose build backend
+docker compose run --rm -p 8080:8080 backend
 ```
 
-后端默认监听 `http://localhost:8080`。
+这会启动所需的 MySQL/Redis，并将开发后端映射到 `http://localhost:8080`。修改 Java 代码后需重新构建、运行。数据库表由 Flyway 在应用启动时自动创建和迁移。连接配置使用 `DB_URL`、`DB_USERNAME`、`DB_PASSWORD`、`REDIS_HOST`、`REDIS_PASSWORD`；其中 Redis 密码必须提供。
 
 前端要求 Node.js 24：
 
@@ -66,12 +67,9 @@ Vite 默认监听 `http://localhost:5173`，开发环境中的 `/api` 请求会�
 
 ## 测试与 CI
 
-后端测试可以通过以下命令运行：
+后端的 `mvn test` 包括原有单元测试和真实 HTTP/MySQL/Redis 的 Session 集成测试，需要可连接的 MySQL 和带密码的 Redis。请按 [部署文档中的隔离测试步骤](docs/DEPLOYMENT.md#本地后端集成测试) 在 Docker 内网运行，使用独立测试项目和测试数据库。
 
-```bash
-cd backend
-mvn test
-```
+集成测试验证注册、登录、Cookie 认证、Session 中的密码哈希擦除、30 天 TTL、注销、CSRF、用户隔离、snapshot 同步与冲突，以及 Session 丢失后重新登录仍能读取 MySQL 数据。测试只删除自己创建的账号和会话。
 
 前端在提交前可以依次执行类型检查、测试和构建：
 
@@ -82,4 +80,4 @@ npm run test:run
 npm run build
 ```
 
-GitHub Actions 配置位于 `.github/workflows/ci.yml`。
+GitHub Actions 配置位于 `.github/workflows/ci.yml`。后端 job 和 MySQL/Redis service 都运行在容器内，通过服务名连接，不发布 Redis 宿主机端口，不使用 Testcontainers。

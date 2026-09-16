@@ -1,6 +1,6 @@
 # 架构
 
-VocabTrim Full 由 Vue 单页应用、Spring Boot 后端和 MySQL 数据库组成。它保留了 VocabTrim 原有的本地词表处理方式，并在外围增加账号认证和手动 snapshot 同步。整个后端作为一个 Spring Boot 应用部署，内部按认证、用户、同步和通用基础设施划分代码，不需要额外的服务发现或跨服务通信。
+VocabTrim Full 由 Vue 单页应用、Spring Boot 后端、MySQL 数据库和保存 HTTP Session 的 Redis 组成。它保留了 VocabTrim 原有的本地词表处理方式，并在外围增加账号认证和手动 snapshot 同步。整个后端作为一个 Spring Boot 应用部署，内部按认证、用户、同步和通用基础设施划分代码，不需要额外的服务发现或跨服务通信。
 
 ## 总体结构
 
@@ -20,6 +20,7 @@ Browser
          ▼
    Spring Boot
    ├── Spring Security
+   │   └── Spring Session → Redis（HTTP Session）
    ├── Controller
    ├── Service
    └── MyBatis Mapper
@@ -47,6 +48,18 @@ Pinia 管理正在使用的词表、当前游标、词条标记、显示设置�
 ## 认证与会话
 
 认证由 Spring Security 处理，使用服务端 Session 和 Cookie。登录成功后，浏览器持有名为 `VOCABTRIM_SESSION` 的 HttpOnly Cookie，后续同源请求会自动携带该 Cookie。密码在注册时使用 BCrypt 处理，数据库只保存密码哈希。
+
+`spring-boot-starter-session-data-redis` 由 Spring Boot 4.1 管理依赖版本，并自动配置默认的 `RedisSessionRepository`，将 Servlet Session 存储在 Redis。项目不声明 `@EnableRedisHttpSession`，不自定义 Session 存取或序列化，不启用会话索引。Redis key 前缀为 `vocabtrim:session:v1`，仅保存 HTTP Session 及其中必要的认证上下文，不缓存账号、snapshot 或词表业务数据。
+
+会话闲置超时仍由唯一配置 `server.servlet.session.timeout: 30d` 控制；不再定义 `spring.session.timeout`。Spring Session 会采用该值并更新 Redis 中的过期时间。纯本地词表操作没有后端请求，因此不会刷新服务端会话的闲置时间。Cookie 名称、HttpOnly、Secure 和 SameSite 设置继续由 Spring Boot 自动配置承接。
+
+`VocabTrimPrincipal` 实现 `CredentialsContainer`。登录校验完成后，Spring Security 默认的凭据擦除机制会把 Principal 的 `passwordHash` 置为 `null`，随后保存的 Session 不再包含密码哈希。每次新登录仍从 MySQL 加载密码哈希进行 BCrypt 校验，数据库值不被擦除。
+
+Session 属性保留 Spring Session 默认的 Java Serialization。Principal 显式声明 `serialVersionUID`，但这不保证应用或框架任意版本之间兼容。不兼容升级时应更换本项目 Session namespace，旧会话不再读取，用户重新登录；旧 Redis key 自然过期即可。首次从 JVM 内存会话切换到 Redis 同样需要重新登录。
+
+Session 被视为可丢失的临时状态，Redis 关闭 RDB/AOF，Compose 不配置 Redis 数据卷。仅重启后端且会话仍有效、序列化兼容时可以继续登录；Redis 重启或重建后需重新登录。Redis 不可用时认证请求可能失败，不会回退到另一套 JVM 内存 Session；MySQL 和 IndexedDB 的业务数据不受影响。
+
+配置依据：[Spring Boot Session 自动配置与超时](https://docs.spring.io/spring-boot/reference/web/spring-session.html)、[Spring Session Redis 默认实现与序列化](https://docs.spring.io/spring-session/reference/configuration/redis.html)。注意 Boot 4.1 的实际配置前缀是 `spring.session.data.redis`，namespace 使用 `spring.session.data.redis.namespace`；旧的 `spring.session.redis.*` 已不适用，见 [Boot 4.1.0 配置类](https://github.com/spring-projects/spring-boot/blob/v4.1.0/module/spring-boot-session-data-redis/src/main/java/org/springframework/boot/session/data/redis/autoconfigure/SessionDataRedisProperties.java)。
 
 修改状态的请求还需要通过 CSRF 校验。后端使用 `CookieCsrfTokenRepository`，前端通过 `GET /api/v1/auth/me` 取得 CSRF token，并在注册、登录、退出和 snapshot 上传等请求中发送 `X-XSRF-TOKEN` 请求头。
 

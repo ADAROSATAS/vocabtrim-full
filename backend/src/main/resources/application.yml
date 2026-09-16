@@ -11,6 +11,17 @@ spring:
       connection-timeout: 30000
   flyway:
     enabled: true
+  data:
+    redis:
+      host: ${REDIS_HOST:redis}
+      port: 6379
+      password: ${REDIS_PASSWORD}  # 必须提供 redis 密码
+      connect-timeout: 2s
+      timeout: 2s
+  session:
+    data:
+      redis:
+        namespace: vocabtrim:session:v1
 
 server:
   port: 8080
