@@ -64,7 +64,7 @@ docker run --rm --network vocabtrim-test_default --env-file .env.test.local \
   sh -c 'export DB_URL="jdbc:mysql://mysql:3306/${MYSQL_DATABASE}?allowPublicKeyRetrieval=true&useSSL=false" DB_USERNAME="$MYSQL_USER" DB_PASSWORD="$MYSQL_PASSWORD" SESSION_COOKIE_SECURE=false; exec mvn -B test'
 ```
 
-Maven 在容器内执行全部后端测试，Redis 不发布宿主机端口。只运行新增集成测试时，可把最后的 `mvn -B test` 改成 `mvn -B -Dtest=RedisSessionIntegrationTest test`。测试会通过随机端口发起真实注册/登录请求，再从 Redis 读回 Session，验证凭据擦除、TTL、Cookie 认证、注销与 CSRF，并覆盖同步冲突、用户隔离和会话丢失后的数据保留。
+Maven 在容器内执行全部后端测试，Redis 不发布宿主机端口。只运行 Session 集成测试时，可把最后的 `mvn -B test` 改成 `mvn -B -Dtest=RedisSessionIntegrationTest test`。该测试仅演示一条基本流程：准备账号、获取 CSRF token、通过随机端口真实登录，再从 Redis 读回 Session，验证用户身份及密码哈希擦除，最后清理测试数据。
 
 完成后，只清理上述测试项目（`--volumes` 会删除这个测试项目的 MySQL 数据）：
 
